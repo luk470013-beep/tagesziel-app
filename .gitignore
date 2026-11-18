@@ -1,0 +1,22 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+.idea/
+.vscode/
+# Android-Ordner wird beim Build automatisch erzeugt
+/android/
+/web/
+/ios/
+/linux/
+/macos/
+/windows/
+# Schlüssel niemals einchecken
+*.jks
+*.keystore
+key.properties
