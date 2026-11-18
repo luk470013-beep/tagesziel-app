@@ -1,0 +1,98 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.50.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Android- und Web-Ordner werden frisch erzeugt, danach kommen
+      # unsere eigenen Einstellungen (Erinnerungen, Signierung) darüber.
+      - name: Plattform-Ordner erzeugen
+        run: |
+          flutter create --platforms=android,web --org de.luca --project-name tagesziele .
+          cp -r android_overrides/. android/
+          sed -i 's#<title>.*</title>#<title>Tagesziele</title>#' web/index.html
+          sed -i 's#"name": ".*"#"name": "Tagesziele"#; s#"short_name": ".*"#"short_name": "Tagesziele"#' web/manifest.json
+          rm -rf test
+
+      - name: Abhängigkeiten
+        run: flutter pub get
+
+      - name: Code prüfen
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      # ---------- Browser-Vorschau ----------
+      - name: Web bauen
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/web
+
+      # ---------- Android-App ----------
+      - name: Signierschlüssel einrichten
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > android/app/upload.jks
+          cat > android/key.properties <<EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEYSTORE_PASSWORD
+          keyAlias=upload
+          storeFile=upload.jks
+          EOF
+
+      - name: APK bauen
+        run: flutter build apk --release --build-number=${{ github.run_number }}
+
+      - name: APK veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk Tagesziele.apk
+          gh release delete app-latest --yes --cleanup-tag || true
+          gh release create app-latest Tagesziele.apk \
+            --target "$GITHUB_SHA" \
+            --title "Tagesziele – neueste Version (#${{ github.run_number }})" \
+            --notes "Automatisch gebaut aus dem neuesten Stand. Auf dem Handy herunterladen und installieren."
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
