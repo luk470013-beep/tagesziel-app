@@ -160,9 +160,11 @@ class SettingsPage extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.wallpaper),
             title: const Text('Hintergrund'),
-            subtitle: Text(st.bgMode == BgMode.daily
-                ? 'Jeden Tag ein neues Foto'
-                : 'Mein eigenes Bild'),
+            subtitle: Text(switch (st.bgMode) {
+              BgMode.anime => 'Anime-Stadt',
+              BgMode.photo => 'Fotos',
+              BgMode.own => 'Meine Bilder',
+            }),
             onTap: () => showBackgroundOptions(context),
           ),
           ListTile(

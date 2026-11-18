@@ -143,7 +143,8 @@ class Quote {
       );
 }
 
-enum BgMode { daily, own }
+/// Hintergrund der Startseite.
+enum BgMode { anime, photo, own }
 
 class Settings {
   Settings({
@@ -152,7 +153,8 @@ class Settings {
     this.morningMinute = 0,
     this.carryOver = true,
     this.name = '',
-    this.bgMode = BgMode.daily,
+    this.bgMode = BgMode.anime,
+    this.bgOffset = 0,
     this.onlyOwnQuotes = false,
   });
 
@@ -164,8 +166,11 @@ class Settings {
   /// Name für die Begrüßung auf der Startseite.
   String name;
 
-  /// Hintergrund der Startseite: tägliches Foto oder eigenes Bild.
+  /// Hintergrund der Startseite.
   BgMode bgMode;
+
+  /// Verschiebt das tägliche Motiv ("Anderes Motiv").
+  int bgOffset;
 
   /// Auf der Startseite nur eigene Sprüche zeigen.
   bool onlyOwnQuotes;
@@ -177,6 +182,7 @@ class Settings {
         'carryOver': carryOver,
         'name': name,
         'bgMode': bgMode.name,
+        'bgOffset': bgOffset,
         'onlyOwnQuotes': onlyOwnQuotes,
       };
 
@@ -188,8 +194,9 @@ class Settings {
         name: (j['name'] as String?) ?? '',
         bgMode: BgMode.values.firstWhere(
           (m) => m.name == j['bgMode'],
-          orElse: () => BgMode.daily,
+          orElse: () => BgMode.anime,
         ),
+        bgOffset: (j['bgOffset'] as num?)?.toInt() ?? 0,
         onlyOwnQuotes: (j['onlyOwnQuotes'] as bool?) ?? false,
       );
 }

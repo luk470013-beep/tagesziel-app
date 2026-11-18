@@ -6,42 +6,58 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models.dart';
 import '../store.dart';
+import 'anime_scene.dart';
+import 'backgrounds_page.dart';
 import 'quotes_page.dart';
 import 'scope.dart';
 
-/// Wählt ein Bild aus der Galerie, verkleinert es und speichert es.
-Future<bool> pickImageInto(BuildContext context, String key,
+/// Wählt ein Bild aus der Galerie und gibt es verkleinert zurück.
+Future<Uint8List?> pickImageBytes(BuildContext context,
     {required double maxSize}) async {
-  final store = StoreScope.read(context);
   final messenger = ScaffoldMessenger.of(context);
   try {
     final x = await ImagePicker().pickImage(
       source: ImageSource.gallery,
       maxWidth: maxSize,
       maxHeight: maxSize,
-      imageQuality: 82,
+      imageQuality: 80,
       requestFullMetadata: false,
     );
-    if (x == null) return false;
-    final bytes = await x.readAsBytes();
-    await store.setImage(key, bytes);
-    return true;
+    if (x == null) return null;
+    return await x.readAsBytes();
   } catch (e) {
     messenger.showSnackBar(
         const SnackBar(content: Text('Das Bild konnte nicht geladen werden.')));
-    return false;
+    return null;
   }
+}
+
+/// Fügt ein eigenes Hintergrundbild hinzu und aktiviert "Meine Bilder".
+Future<void> addOwnBackground(BuildContext context) async {
+  final store = StoreScope.read(context);
+  final messenger = ScaffoldMessenger.of(context);
+  final bytes = await pickImageBytes(context, maxSize: 1400);
+  if (bytes == null) return;
+  final ok = await store.addBackground(bytes);
+  if (!ok) {
+    messenger.showSnackBar(const SnackBar(
+        content: Text('Kein Platz mehr – entferne zuerst ein anderes Bild.')));
+    return;
+  }
+  store.updateSettings((s) => s.bgMode = BgMode.own);
 }
 
 /// Hintergrund-Optionen (auch aus den Einstellungen aufrufbar).
 Future<void> showBackgroundOptions(BuildContext context) async {
   final store = StoreScope.read(context);
-  final hasOwn = store.image(Store.kImgBackground) != null;
+  final own = store.backgroundIds.length;
   final choice = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
     builder: (ctx) {
       final mode = store.settings.bgMode;
+      Widget check(BgMode m) =>
+          mode == m ? const Icon(Icons.check) : const SizedBox.shrink();
       return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -56,31 +72,45 @@ Future<void> showBackgroundOptions(BuildContext context) async {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.auto_awesome_outlined),
-              title: const Text('Jeden Tag ein neues Foto'),
-              subtitle: const Text('Braucht Internet'),
-              trailing: mode == BgMode.daily ? const Icon(Icons.check) : null,
-              onTap: () => Navigator.pop(ctx, 'daily'),
+              leading: const Icon(Icons.location_city),
+              title: const Text('Anime-Stadt'),
+              subtitle: const Text('Jeden Tag eine andere Szene'),
+              trailing: check(BgMode.anime),
+              onTap: () => Navigator.pop(ctx, 'anime'),
             ),
-            if (hasOwn)
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Fotos'),
+              subtitle: const Text('Jeden Tag ein neues Foto · braucht Internet'),
+              trailing: check(BgMode.photo),
+              onTap: () => Navigator.pop(ctx, 'photo'),
+            ),
+            if (own > 0)
               ListTile(
-                leading: const Icon(Icons.image_outlined),
-                title: const Text('Mein eigenes Bild'),
-                trailing: mode == BgMode.own ? const Icon(Icons.check) : null,
+                leading: const Icon(Icons.collections_outlined),
+                title: const Text('Meine Bilder'),
+                subtitle: Text(own == 1
+                    ? '1 Bild'
+                    : '$own Bilder · wechseln jeden Tag'),
+                trailing: check(BgMode.own),
                 onTap: () => Navigator.pop(ctx, 'own'),
               ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.shuffle),
+              title: const Text('Anderes Motiv'),
+              onTap: () => Navigator.pop(ctx, 'next'),
+            ),
             ListTile(
               leading: const Icon(Icons.add_photo_alternate_outlined),
-              title: Text(hasOwn
-                  ? 'Anderes Bild aus Galerie wählen'
-                  : 'Eigenes Bild aus Galerie wählen'),
-              onTap: () => Navigator.pop(ctx, 'pick'),
+              title: const Text('Eigenes Bild hinzufügen'),
+              onTap: () => Navigator.pop(ctx, 'add'),
             ),
-            if (hasOwn)
+            if (own > 0)
               ListTile(
-                leading: const Icon(Icons.delete_outline),
-                title: const Text('Eigenes Bild entfernen'),
-                onTap: () => Navigator.pop(ctx, 'remove'),
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Meine Bilder verwalten'),
+                onTap: () => Navigator.pop(ctx, 'manage'),
               ),
             const SizedBox(height: 8),
           ],
@@ -90,17 +120,19 @@ Future<void> showBackgroundOptions(BuildContext context) async {
   );
   if (!context.mounted || choice == null) return;
   switch (choice) {
-    case 'daily':
-      store.updateSettings((s) => s.bgMode = BgMode.daily);
+    case 'anime':
+      store.updateSettings((s) => s.bgMode = BgMode.anime);
+    case 'photo':
+      store.updateSettings((s) => s.bgMode = BgMode.photo);
     case 'own':
       store.updateSettings((s) => s.bgMode = BgMode.own);
-    case 'pick':
-      final ok =
-          await pickImageInto(context, Store.kImgBackground, maxSize: 1600);
-      if (ok) store.updateSettings((s) => s.bgMode = BgMode.own);
-    case 'remove':
-      await store.setImage(Store.kImgBackground, null);
-      store.updateSettings((s) => s.bgMode = BgMode.daily);
+    case 'next':
+      store.updateSettings((s) => s.bgOffset++);
+    case 'add':
+      await addOwnBackground(context);
+    case 'manage':
+      Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => const BackgroundsPage()));
   }
 }
 
@@ -112,7 +144,8 @@ class StartPage extends StatelessWidget {
   Future<void> _avatarOptions(BuildContext context) async {
     final store = StoreScope.read(context);
     if (store.image(Store.kImgAvatar) == null) {
-      await pickImageInto(context, Store.kImgAvatar, maxSize: 600);
+      final bytes = await pickImageBytes(context, maxSize: 600);
+      if (bytes != null) await store.setImage(Store.kImgAvatar, bytes);
       return;
     }
     final choice = await showModalBottomSheet<String>(
@@ -139,7 +172,8 @@ class StartPage extends StatelessWidget {
     );
     if (!context.mounted) return;
     if (choice == 'pick') {
-      await pickImageInto(context, Store.kImgAvatar, maxSize: 600);
+      final bytes = await pickImageBytes(context, maxSize: 600);
+      if (bytes != null) await store.setImage(Store.kImgAvatar, bytes);
     } else if (choice == 'remove') {
       await store.setImage(Store.kImgAvatar, null);
     }
@@ -150,9 +184,21 @@ class StartPage extends StatelessWidget {
     final store = StoreScope.of(context);
     final now = DateTime.now();
     final today = dayKey(now);
-    final bg = store.settings.bgMode == BgMode.own
-        ? store.image(Store.kImgBackground)
-        : null;
+    final variant = dayOfYear(now) + store.settings.bgOffset;
+    final ownIds = store.backgroundIds;
+    final mode = store.settings.bgMode == BgMode.own && ownIds.isEmpty
+        ? BgMode.anime
+        : store.settings.bgMode;
+    final Widget background = switch (mode) {
+      BgMode.anime => AnimeScene(variant: variant),
+      BgMode.photo => _PhotoBackground(seed: '$today-${store.settings.bgOffset}'),
+      BgMode.own => Image.memory(
+          store.backgroundImage(ownIds[variant % ownIds.length])!,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => AnimeScene(variant: variant),
+        ),
+    };
     final avatar = store.image(Store.kImgAvatar);
     final name = store.settings.name.trim();
     final goals = store.goalsFor(today);
@@ -167,7 +213,7 @@ class StartPage extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          _Background(bytes: bg, seed: today),
+          background,
           const DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -271,10 +317,9 @@ class StartPage extends StatelessWidget {
   }
 }
 
-class _Background extends StatelessWidget {
-  const _Background({required this.bytes, required this.seed});
+class _PhotoBackground extends StatelessWidget {
+  const _PhotoBackground({required this.seed});
 
-  final Uint8List? bytes;
   final String seed;
 
   static const _fallback = DecoratedBox(
@@ -289,9 +334,6 @@ class _Background extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (bytes != null) {
-      return Image.memory(bytes!, fit: BoxFit.cover, gaplessPlayback: true);
-    }
     return Stack(
       fit: StackFit.expand,
       children: [

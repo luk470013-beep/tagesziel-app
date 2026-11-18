@@ -14,7 +14,8 @@ class Store extends ChangeNotifier {
   static const _kEntries = 'entries_v1';
   static const _kSettings = 'settings_v1';
   static const _kNextNid = 'next_nid_v1';
-  static const kImgBackground = 'img_background_v1';
+  static const _kLegacyBackground = 'img_background_v1';
+  static const _kBgIds = 'img_bg_ids_v1';
   static const kImgAvatar = 'img_avatar_v1';
   static const _kQuotes = 'quotes_v1';
 
@@ -25,6 +26,7 @@ class Store extends ChangeNotifier {
   bool loaded = false;
   final Map<String, Uint8List?> _images = {};
   final List<Quote> _ownQuotes = [];
+  final List<String> _bgIds = [];
 
   /// Wie viele Ziele beim letzten Start übernommen wurden (für Hinweis).
   int lastCarried = 0;
@@ -60,6 +62,18 @@ class Store extends ChangeNotifier {
           ..addAll((jsonDecode(q) as List)
               .map((e) => Quote.fromJson(e as Map<String, dynamic>)));
       } catch (_) {}
+    }
+    _bgIds
+      ..clear()
+      ..addAll(_prefs.getStringList(_kBgIds) ?? const []);
+    // Altes Einzelbild in die neue Bilderliste übernehmen.
+    final legacy = _prefs.getString(_kLegacyBackground);
+    if (legacy != null) {
+      final id = _newId();
+      await _prefs.setString('img_bg_$id', legacy);
+      await _prefs.remove(_kLegacyBackground);
+      _bgIds.add(id);
+      await _prefs.setStringList(_kBgIds, _bgIds);
     }
     _nextNid = _prefs.getInt(_kNextNid) ?? 1000;
     for (final e in _entries) {
@@ -273,14 +287,46 @@ class Store extends ChangeNotifier {
     return bytes;
   }
 
-  Future<void> setImage(String key, Uint8List? bytes) async {
+  /// Speichert ein Bild. Gibt false zurück, wenn der Speicher voll ist.
+  Future<bool> setImage(String key, Uint8List? bytes) async {
+    try {
+      if (bytes == null) {
+        await _prefs.remove(key);
+      } else {
+        await _prefs.setString(key, base64Encode(bytes));
+      }
+    } catch (e) {
+      debugPrint('Bild konnte nicht gespeichert werden: $e');
+      return false;
+    }
     _images[key] = bytes;
     notifyListeners();
-    if (bytes == null) {
-      await _prefs.remove(key);
-    } else {
-      await _prefs.setString(key, base64Encode(bytes));
+    return true;
+  }
+
+  // Eigene Hintergrundbilder (wechseln täglich)
+  List<String> get backgroundIds => List.unmodifiable(_bgIds);
+
+  Uint8List? backgroundImage(String id) => image('img_bg_$id');
+
+  Future<bool> addBackground(Uint8List bytes) async {
+    final id = _newId();
+    final ok = await setImage('img_bg_$id', bytes);
+    if (!ok) return false;
+    _bgIds.add(id);
+    await _prefs.setStringList(_kBgIds, _bgIds);
+    notifyListeners();
+    return true;
+  }
+
+  Future<void> removeBackground(String id) async {
+    _bgIds.remove(id);
+    await _prefs.setStringList(_kBgIds, _bgIds);
+    await setImage('img_bg_$id', null);
+    if (_bgIds.isEmpty && settings.bgMode == BgMode.own) {
+      updateSettings((s) => s.bgMode = BgMode.anime);
     }
+    notifyListeners();
   }
 
   // ---------- Sprüche ----------
