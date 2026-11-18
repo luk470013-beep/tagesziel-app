@@ -122,6 +122,27 @@ class Entry {
   }
 }
 
+/// Ein Spruch (eingebaut oder selbst eingetragen).
+class Quote {
+  Quote({required this.id, required this.text, this.source = ''});
+
+  final String id;
+  String text;
+
+  /// Woher der Spruch stammt, z. B. Anime oder Figur (optional).
+  String source;
+
+  bool get isOwn => !id.startsWith('builtin-');
+
+  Map<String, dynamic> toJson() => {'id': id, 'text': text, 'source': source};
+
+  factory Quote.fromJson(Map<String, dynamic> j) => Quote(
+        id: j['id'] as String,
+        text: (j['text'] as String?) ?? '',
+        source: (j['source'] as String?) ?? '',
+      );
+}
+
 enum BgMode { daily, own }
 
 class Settings {
@@ -132,6 +153,7 @@ class Settings {
     this.carryOver = true,
     this.name = '',
     this.bgMode = BgMode.daily,
+    this.onlyOwnQuotes = false,
   });
 
   bool morningEnabled;
@@ -145,6 +167,9 @@ class Settings {
   /// Hintergrund der Startseite: tägliches Foto oder eigenes Bild.
   BgMode bgMode;
 
+  /// Auf der Startseite nur eigene Sprüche zeigen.
+  bool onlyOwnQuotes;
+
   Map<String, dynamic> toJson() => {
         'morningEnabled': morningEnabled,
         'morningHour': morningHour,
@@ -152,6 +177,7 @@ class Settings {
         'carryOver': carryOver,
         'name': name,
         'bgMode': bgMode.name,
+        'onlyOwnQuotes': onlyOwnQuotes,
       };
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
@@ -164,6 +190,7 @@ class Settings {
           (m) => m.name == j['bgMode'],
           orElse: () => BgMode.daily,
         ),
+        onlyOwnQuotes: (j['onlyOwnQuotes'] as bool?) ?? false,
       );
 }
 

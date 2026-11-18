@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models.dart';
 import '../notifications.dart';
+import 'quotes_page.dart';
 import 'scope.dart';
 import 'start_page.dart';
 
@@ -163,6 +164,15 @@ class SettingsPage extends StatelessWidget {
                 ? 'Jeden Tag ein neues Foto'
                 : 'Mein eigenes Bild'),
             onTap: () => showBackgroundOptions(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.format_quote),
+            title: const Text('Sprüche'),
+            subtitle: Text(store.ownQuotes.isEmpty
+                ? 'Eigene Sprüche hinzufügen'
+                : '${store.ownQuotes.length} eigene Sprüche'),
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const QuotesPage())),
           ),
           header('Tagesziele'),
           SwitchListTile(

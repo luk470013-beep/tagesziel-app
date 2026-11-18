@@ -5,8 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models.dart';
-import '../quotes.dart';
 import '../store.dart';
+import 'quotes_page.dart';
 import 'scope.dart';
 
 /// Wählt ein Bild aus der Galerie, verkleinert es und speichert es.
@@ -246,20 +246,7 @@ class StartPage extends StatelessWidget {
                           ),
                           const SizedBox(height: 28),
                           // ---------- Spruch des Tages ----------
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Text(
-                              '„${quoteFor(dayOfYear(now))}“',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontStyle: FontStyle.italic,
-                                height: 1.4,
-                                shadows: shadow,
-                              ),
-                            ),
-                          ),
+                          _QuoteOfDay(day: dayOfYear(now)),
                           const Spacer(),
                           const SizedBox(height: 32),
                           // ---------- Heute ----------
@@ -472,6 +459,64 @@ class _TodayCard extends StatelessWidget {
                 style: const TextStyle(fontWeight: FontWeight.w600)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Spruch des Tages. Antippen = nächster Spruch, lange drücken = verwalten.
+class _QuoteOfDay extends StatefulWidget {
+  const _QuoteOfDay({required this.day});
+
+  final int day;
+
+  @override
+  State<_QuoteOfDay> createState() => _QuoteOfDayState();
+}
+
+class _QuoteOfDayState extends State<_QuoteOfDay> {
+  int _offset = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final pool = StoreScope.of(context).quotePool();
+    final q = pool[(widget.day + _offset) % pool.length];
+    const shadow = [Shadow(blurRadius: 12, color: Colors.black54)];
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _offset++),
+      onLongPress: () => Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => const QuotesPage())),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          child: Column(
+            key: ValueKey(q.id),
+            children: [
+              Text(
+                '„${q.text}“',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontStyle: FontStyle.italic,
+                  height: 1.4,
+                  shadows: shadow,
+                ),
+              ),
+              if (q.source.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '— ${q.source}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.white70, fontSize: 14, shadows: shadow),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
 import 'notifications.dart';
+import 'quotes.dart';
 
 /// Hält alle Einträge im Speicher und sichert sie lokal auf dem Gerät.
 class Store extends ChangeNotifier {
@@ -15,6 +16,7 @@ class Store extends ChangeNotifier {
   static const _kNextNid = 'next_nid_v1';
   static const kImgBackground = 'img_background_v1';
   static const kImgAvatar = 'img_avatar_v1';
+  static const _kQuotes = 'quotes_v1';
 
   late SharedPreferences _prefs;
   final List<Entry> _entries = [];
@@ -22,6 +24,7 @@ class Store extends ChangeNotifier {
   int _nextNid = 1000;
   bool loaded = false;
   final Map<String, Uint8List?> _images = {};
+  final List<Quote> _ownQuotes = [];
 
   /// Wie viele Ziele beim letzten Start übernommen wurden (für Hinweis).
   int lastCarried = 0;
@@ -47,6 +50,15 @@ class Store extends ChangeNotifier {
     if (s != null) {
       try {
         settings = Settings.fromJson(jsonDecode(s) as Map<String, dynamic>);
+      } catch (_) {}
+    }
+    final q = _prefs.getString(_kQuotes);
+    if (q != null) {
+      try {
+        _ownQuotes
+          ..clear()
+          ..addAll((jsonDecode(q) as List)
+              .map((e) => Quote.fromJson(e as Map<String, dynamic>)));
       } catch (_) {}
     }
     _nextNid = _prefs.getInt(_kNextNid) ?? 1000;
@@ -271,6 +283,58 @@ class Store extends ChangeNotifier {
     }
   }
 
+  // ---------- Sprüche ----------
+
+  List<Quote> get ownQuotes => List.unmodifiable(_ownQuotes);
+
+  /// Alle Sprüche, die auf der Startseite rotieren.
+  List<Quote> quotePool() {
+    final builtIn = [
+      for (var i = 0; i < builtInQuotes.length; i++)
+        Quote(id: 'builtin-$i', text: builtInQuotes[i]),
+    ];
+    if (_ownQuotes.isEmpty) return builtIn;
+    if (settings.onlyOwnQuotes) return List.of(_ownQuotes);
+    // Eigene Sprüche kommen doppelt so oft dran.
+    final pool = <Quote>[];
+    var b = 0;
+    for (var round = 0; b < builtIn.length; round++) {
+      pool.add(_ownQuotes[(2 * round) % _ownQuotes.length]);
+      pool.add(_ownQuotes[(2 * round + 1) % _ownQuotes.length]);
+      pool.add(builtIn[b++]);
+    }
+    return pool;
+  }
+
+  Future<void> _saveQuotes() => _prefs.setString(
+      _kQuotes, jsonEncode(_ownQuotes.map((q) => q.toJson()).toList()));
+
+  void addQuote(String text, String source) {
+    _ownQuotes.add(Quote(id: _newId(), text: text.trim(), source: source.trim()));
+    _saveQuotes();
+    notifyListeners();
+  }
+
+  void updateQuote(Quote q, String text, String source) {
+    q
+      ..text = text.trim()
+      ..source = source.trim();
+    _saveQuotes();
+    notifyListeners();
+  }
+
+  void deleteQuote(Quote q) {
+    _ownQuotes.removeWhere((x) => x.id == q.id);
+    _saveQuotes();
+    notifyListeners();
+  }
+
+  void restoreQuote(Quote q, int index) {
+    _ownQuotes.insert(index.clamp(0, _ownQuotes.length), q);
+    _saveQuotes();
+    notifyListeners();
+  }
+
   // ---------- Backup ----------
 
   String exportJson() => const JsonEncoder.withIndent('  ').convert({
@@ -279,6 +343,7 @@ class Store extends ChangeNotifier {
         'exportedAt': DateTime.now().toIso8601String(),
         'settings': settings.toJson(),
         'entries': _entries.map((e) => e.toJson()).toList(),
+        'quotes': _ownQuotes.map((q) => q.toJson()).toList(),
       });
 
   /// Importiert ein Backup. Vorhandene Einträge mit gleicher ID werden
@@ -286,6 +351,14 @@ class Store extends ChangeNotifier {
   Future<int> importJson(String raw) async {
     final data = jsonDecode(raw);
     final list = data is Map ? data['entries'] as List : data as List;
+    if (data is Map && data['quotes'] is List) {
+      for (final item in data['quotes'] as List) {
+        final q = Quote.fromJson(Map<String, dynamic>.from(item as Map));
+        _ownQuotes.removeWhere((x) => x.id == q.id);
+        _ownQuotes.add(q);
+      }
+      await _saveQuotes();
+    }
     var n = 0;
     for (final item in list) {
       final e = Entry.fromJson(Map<String, dynamic>.from(item as Map));
