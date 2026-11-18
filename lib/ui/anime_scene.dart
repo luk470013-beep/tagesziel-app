@@ -79,6 +79,20 @@ const _palettes = <_Palette>[
     stars: 160,
     isNight: true,
   ),
+  // Roter Sonnenuntergang
+  _Palette(
+    sky: [Color(0xFF241650), Color(0xFF6E2A86), Color(0xFFE0435C), Color(0xFFFF6A2B), Color(0xFFFFB347)],
+    stops: [0, 0.25, 0.5, 0.68, 0.8],
+    sun: Color(0xFFFFF4D0),
+    glow: Color(0xFFFF7A35),
+    cloudLit: Color(0xFFFF6B4A),
+    cloudDark: Color(0xFF5A2470),
+    building: Color(0xFF221433),
+    buildingEdge: Color(0xFF4A2246),
+    window: [Color(0xFFFFB866), Color(0xFFFF8A5C), Color(0xFFFFD99A)],
+    stars: 30,
+    isNight: false,
+  ),
   // Blaue Stunde / Dämmerung
   _Palette(
     sky: [Color(0xFF0E1A3D), Color(0xFF2B3A7A), Color(0xFF7D56A3), Color(0xFFE6798A), Color(0xFFFFB38A)],
@@ -185,7 +199,7 @@ class _ScenePainter extends CustomPainter {
       final cw = w * (0.35 + rnd.nextDouble() * 0.6);
       final ch = h * (0.012 + rnd.nextDouble() * 0.025);
       final rect = Rect.fromCenter(center: Offset(cx, cy), width: cw, height: ch);
-      final lit = cy > vp.dy * 0.45;
+      final lit = cy > vp.dy * 0.3 || rnd.nextBool();
       canvas.drawRRect(
         RRect.fromRectAndRadius(rect, Radius.circular(ch)),
         Paint()
@@ -193,8 +207,9 @@ class _ScenePainter extends CustomPainter {
             rect.topCenter,
             rect.bottomCenter,
             [
-              p.cloudDark.withValues(alpha: 0.75),
-              (lit ? p.cloudLit : p.cloudDark).withValues(alpha: 0.85),
+              (lit ? Color.lerp(p.cloudDark, p.cloudLit, 0.5)! : p.cloudDark)
+                  .withValues(alpha: 0.8),
+              (lit ? p.cloudLit : p.cloudDark).withValues(alpha: 0.95),
             ],
           ),
       );
@@ -223,8 +238,8 @@ class _ScenePainter extends CustomPainter {
         ..shader = ui.Gradient.linear(
           Offset(0, vp.dy),
           Offset(0, h),
-          [p.sky[4], p.sky[3], p.sky[2], p.building],
-          [0, 0.15, 0.45, 1],
+          [p.sky[4], p.glow, p.sky[2], Color.lerp(p.sky[1], p.building, 0.5)!],
+          [0, 0.1, 0.4, 1],
         ),
     );
     // Spiegelung der Sonne
@@ -238,7 +253,7 @@ class _ScenePainter extends CustomPainter {
         ..shader = ui.Gradient.linear(
           streak.topCenter,
           streak.bottomCenter,
-          [p.sun.withValues(alpha: 0.85), p.glow.withValues(alpha: 0.0)],
+          [p.sun, p.glow.withValues(alpha: 0.0)],
         )
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
     );
