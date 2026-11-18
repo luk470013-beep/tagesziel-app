@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../models.dart';
 import '../notifications.dart';
 import 'scope.dart';
+import 'start_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -35,6 +36,35 @@ class SettingsPage extends StatelessWidget {
       }
     }
     store.updateSettings((s) => s.morningEnabled = on);
+  }
+
+  Future<void> _editName(BuildContext context) async {
+    final store = StoreScope.read(context);
+    final controller = TextEditingController(text: store.settings.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Dein Name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'z. B. Luca'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Abbrechen')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text),
+              child: const Text('Speichern')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null) return;
+    store.updateSettings((s) => s.name = name.trim());
   }
 
   Future<void> _export(BuildContext context) async {
@@ -119,6 +149,21 @@ class SettingsPage extends StatelessWidget {
       appBar: AppBar(title: const Text('Einstellungen')),
       body: ListView(
         children: [
+          header('Startseite'),
+          ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: const Text('Name für die Begrüßung'),
+            subtitle: Text(st.name.isEmpty ? 'Nicht gesetzt' : st.name),
+            onTap: () => _editName(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.wallpaper),
+            title: const Text('Hintergrund'),
+            subtitle: Text(st.bgMode == BgMode.daily
+                ? 'Jeden Tag ein neues Foto'
+                : 'Mein eigenes Bild'),
+            onTap: () => showBackgroundOptions(context),
+          ),
           header('Tagesziele'),
           SwitchListTile(
             title: const Text('Offene Ziele übernehmen'),

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,12 +13,15 @@ class Store extends ChangeNotifier {
   static const _kEntries = 'entries_v1';
   static const _kSettings = 'settings_v1';
   static const _kNextNid = 'next_nid_v1';
+  static const kImgBackground = 'img_background_v1';
+  static const kImgAvatar = 'img_avatar_v1';
 
   late SharedPreferences _prefs;
   final List<Entry> _entries = [];
   Settings settings = Settings();
   int _nextNid = 1000;
   bool loaded = false;
+  final Map<String, Uint8List?> _images = {};
 
   /// Wie viele Ziele beim letzten Start übernommen wurden (für Hinweis).
   int lastCarried = 0;
@@ -239,6 +243,32 @@ class Store extends ChangeNotifier {
     _saveSettings();
     _notif.syncMorning(settings);
     notifyListeners();
+  }
+
+  // ---------- Bilder (Startseite) ----------
+
+  /// Eigenes Bild (Hintergrund oder Vordergrund) oder null.
+  Uint8List? image(String key) {
+    if (_images.containsKey(key)) return _images[key];
+    final raw = _prefs.getString(key);
+    Uint8List? bytes;
+    if (raw != null) {
+      try {
+        bytes = base64Decode(raw);
+      } catch (_) {}
+    }
+    _images[key] = bytes;
+    return bytes;
+  }
+
+  Future<void> setImage(String key, Uint8List? bytes) async {
+    _images[key] = bytes;
+    notifyListeners();
+    if (bytes == null) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, base64Encode(bytes));
+    }
   }
 
   // ---------- Backup ----------

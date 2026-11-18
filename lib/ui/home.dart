@@ -6,6 +6,7 @@ import 'list_page.dart';
 import 'scope.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
+import 'start_page.dart';
 import 'today_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -19,7 +20,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _tab = 0;
   String _lastDay = dayKey(DateTime.now());
 
-  static const _titles = ['Heute', 'Ideen', 'Infos'];
+  static const _titles = ['Start', 'Heute', 'Ideen', 'Infos'];
 
   @override
   void initState() {
@@ -69,7 +70,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final (done, total) = store.progress(dayKey(DateTime.now()));
 
     return Scaffold(
-      appBar: AppBar(
+      appBar: _tab == 0
+          ? null
+          : AppBar(
         title: Text(_titles[_tab]),
         actions: [
           IconButton(
@@ -103,24 +106,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ),
       body: IndexedStack(
         index: _tab,
-        children: const [
-          TodayPage(),
-          EntryListPage(type: EntryType.idea),
-          EntryListPage(type: EntryType.info),
+        children: [
+          StartPage(onOpenGoals: () => setState(() => _tab = 1)),
+          const TodayPage(),
+          const EntryListPage(type: EntryType.idea),
+          const EntryListPage(type: EntryType.info),
         ],
       ),
-      floatingActionButton: _tab == 0
+      floatingActionButton: _tab < 2
           ? null
           : FloatingActionButton(
-              tooltip: _tab == 1 ? 'Neue Idee' : 'Neue Info',
+              tooltip: _tab == 2 ? 'Neue Idee' : 'Neue Info',
               onPressed: () => showEditSheet(context,
-                  type: _tab == 1 ? EntryType.idea : EntryType.info),
+                  type: _tab == 2 ? EntryType.idea : EntryType.info),
               child: const Icon(Icons.add),
             ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: [
+          const NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Start',
+          ),
           NavigationDestination(
             icon: Badge(
               isLabelVisible: total > 0 && done < total,

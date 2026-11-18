@@ -1,0 +1,37 @@
+/// Eingebaute Motivationssprüche (eigene Formulierungen).
+/// Jeden Tag erscheint ein anderer.
+const quotes = <String>[
+  'Kleine Schritte jeden Tag schlagen große Pläne, die nie starten.',
+  'Disziplin ist, das Richtige zu tun, auch wenn keiner zuschaut.',
+  'Du musst nicht motiviert sein. Du musst nur anfangen.',
+  'Heute ist ein guter Tag, um dein zukünftiges Ich stolz zu machen.',
+  'Fortschritt schlägt Perfektion. Jedes Mal.',
+  'Was du heute säst, erntest du morgen.',
+  'Fokus heißt auch, Nein zu sagen.',
+  'Der schwerste Teil ist der erste Schritt. Mach ihn jetzt.',
+  'Du wirst nie bereuen, es versucht zu haben.',
+  'Gewohnheiten bauen dein Leben – Tag für Tag.',
+  'Erfolg ist die Summe vieler unscheinbarer Tage.',
+  'Sei heute besser als gestern, nicht besser als andere.',
+  'Ruhe im Kopf, Klarheit im Plan, Konsequenz im Handeln.',
+  'Große Ziele beginnen mit einer kleinen Aufgabe.',
+  'Wer nicht aufgibt, hat noch nicht verloren.',
+  'Die beste Zeit war gestern. Die zweitbeste ist jetzt.',
+  'Mach es einfach. Später ist ein gefährliches Wort.',
+  'Jeder erledigte Punkt ist ein Versprechen an dich selbst, das du hältst.',
+  'Geduld und Ausdauer sind unterschätzte Superkräfte.',
+  'Deine Zukunft entsteht durch das, was du heute tust.',
+  'Weniger nachdenken, mehr machen.',
+  'Struktur gibt Freiheit.',
+  'Bleib hungrig, bleib dran.',
+  'Ein klarer Tag beginnt mit einem klaren Ziel.',
+  'Du bist näher dran, als du denkst.',
+  'Zweifel vergehen, wenn man handelt.',
+  'Qualität ist kein Zufall, sondern eine Entscheidung.',
+  'Hart arbeiten, ruhig bleiben, nicht aufhören.',
+  'Ein Tag ohne Ziel ist ein Tag ohne Richtung.',
+  'Konsequenz macht aus Träumen Pläne und aus Plänen Ergebnisse.',
+  'Heute zählt. Nicht irgendwann.',
+];
+
+String quoteFor(int dayOfYear) => quotes[dayOfYear % quotes.length];

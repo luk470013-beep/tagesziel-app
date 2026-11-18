@@ -122,12 +122,16 @@ class Entry {
   }
 }
 
+enum BgMode { daily, own }
+
 class Settings {
   Settings({
     this.morningEnabled = false,
     this.morningHour = 8,
     this.morningMinute = 0,
     this.carryOver = true,
+    this.name = '',
+    this.bgMode = BgMode.daily,
   });
 
   bool morningEnabled;
@@ -135,11 +139,19 @@ class Settings {
   int morningMinute;
   bool carryOver;
 
+  /// Name für die Begrüßung auf der Startseite.
+  String name;
+
+  /// Hintergrund der Startseite: tägliches Foto oder eigenes Bild.
+  BgMode bgMode;
+
   Map<String, dynamic> toJson() => {
         'morningEnabled': morningEnabled,
         'morningHour': morningHour,
         'morningMinute': morningMinute,
         'carryOver': carryOver,
+        'name': name,
+        'bgMode': bgMode.name,
       };
 
   factory Settings.fromJson(Map<String, dynamic> j) => Settings(
@@ -147,6 +159,11 @@ class Settings {
         morningHour: (j['morningHour'] as num?)?.toInt() ?? 8,
         morningMinute: (j['morningMinute'] as num?)?.toInt() ?? 0,
         carryOver: (j['carryOver'] as bool?) ?? true,
+        name: (j['name'] as String?) ?? '',
+        bgMode: BgMode.values.firstWhere(
+          (m) => m.name == j['bgMode'],
+          orElse: () => BgMode.daily,
+        ),
       );
 }
 
@@ -215,3 +232,17 @@ String fmtReminder(DateTime d, Repeat r) => switch (r) {
       Repeat.daily => 'Täglich ${fmtTime(d)}',
       Repeat.weekly => 'Jeden ${_weekdaysShort[d.weekday - 1]} ${fmtTime(d)}',
     };
+
+/// Begrüßung je nach Tageszeit.
+String greeting(DateTime now) {
+  final h = now.hour;
+  if (h < 5) return 'Gute Nacht';
+  if (h < 11) return 'Guten Morgen';
+  if (h < 14) return 'Guten Mittag';
+  if (h < 18) return 'Guten Tag';
+  return 'Guten Abend';
+}
+
+/// Tag im Jahr (1–366), z. B. für den Spruch des Tages.
+int dayOfYear(DateTime d) =>
+    DateTime(d.year, d.month, d.day).difference(DateTime(d.year)).inDays + 1;
