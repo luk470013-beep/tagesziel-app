@@ -103,6 +103,27 @@ class SwipeToDelete extends StatelessWidget {
       onDismissed: (_) {
         final store = StoreScope.read(context);
         final messenger = ScaffoldMessenger.of(context);
+        if (entry.isTemplate) {
+          store.deleteTemplate(entry);
+          messenger
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(
+                content: Text('Wiederholung von „${entry.title}“ beendet')));
+          return;
+        }
+        if (entry.templateId != null) {
+          store.skipInstance(entry);
+          messenger
+            ..hideCurrentSnackBar()
+            ..showSnackBar(SnackBar(
+              content: Text('„${entry.title}“ für diesen Tag entfernt'),
+              action: SnackBarAction(
+                label: 'Rückgängig',
+                onPressed: () => store.unskipInstance(entry),
+              ),
+            ));
+          return;
+        }
         store.delete(entry);
         messenger
           ..hideCurrentSnackBar()

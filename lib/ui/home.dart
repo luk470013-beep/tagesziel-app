@@ -4,6 +4,7 @@ import '../models.dart';
 import 'edit_sheet.dart';
 import 'list_page.dart';
 import 'scope.dart';
+import 'routines_page.dart';
 import 'search_page.dart';
 import 'settings_page.dart';
 import 'start_page.dart';
@@ -75,6 +76,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           : AppBar(
         title: Text(_titles[_tab]),
         actions: [
+          if (_tab == 1)
+            IconButton(
+              tooltip: 'Wiederkehrende Ziele',
+              icon: const Icon(Icons.repeat),
+              onPressed: () => _open(const RoutinesPage()),
+            ),
           IconButton(
             tooltip: 'Suchen',
             icon: const Icon(Icons.search),

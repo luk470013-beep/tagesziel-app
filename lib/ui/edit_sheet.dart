@@ -11,13 +11,19 @@ Future<void> showEditSheet(
   Entry? entry,
   EntryType type = EntryType.idea,
   String? day,
+  List<int>? recurDays,
 }) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: true,
-    builder: (_) => EditSheet(entry: entry, initialType: type, initialDay: day),
+    builder: (_) => EditSheet(
+      entry: entry,
+      initialType: type,
+      initialDay: day,
+      initialRecur: recurDays,
+    ),
   );
 }
 
@@ -27,11 +33,13 @@ class EditSheet extends StatefulWidget {
     this.entry,
     required this.initialType,
     this.initialDay,
+    this.initialRecur,
   });
 
   final Entry? entry;
   final EntryType initialType;
   final String? initialDay;
+  final List<int>? initialRecur;
 
   @override
   State<EditSheet> createState() => _EditSheetState();
@@ -47,7 +55,14 @@ class _EditSheetState extends State<EditSheet> {
   DateTime? _remindAt;
   Repeat _repeat = Repeat.none;
 
+  /// Wochentage für wiederkehrende Ziele (leer = einmalig).
+  late List<int> _recur;
+
+  /// Vorlage, falls ein wiederkehrendes Ziel bearbeitet wird.
+  Entry? _template;
+
   bool get _isNew => widget.entry == null;
+  bool get _recurring => _type == EntryType.goal && _recur.isNotEmpty;
 
   @override
   void initState() {
@@ -60,7 +75,23 @@ class _EditSheetState extends State<EditSheet> {
     _day = e?.day ?? widget.initialDay ?? dayKey(DateTime.now());
     _remindAt = e?.remindAt;
     _repeat = e?.repeat ?? Repeat.none;
+    if (e != null && e.isTemplate) {
+      _template = e;
+    } else if (e?.templateId != null) {
+      _template = StoreScope.read(context).templateOf(e!);
+    }
+    _recur = [...?(_template?.recurDays ?? widget.initialRecur)];
+    if (_template != null) _remindAt = _template!.remindAt;
   }
+
+  void _toggleDay(int wd) => setState(() {
+        if (_recur.contains(wd)) {
+          _recur.remove(wd);
+        } else {
+          _recur.add(wd);
+        }
+        _recur.sort();
+      });
 
   @override
   void dispose() {
@@ -92,6 +123,19 @@ class _EditSheetState extends State<EditSheet> {
 
   Future<void> _pickReminder() async {
     final now = DateTime.now();
+    if (_recurring) {
+      final t = await showTimePicker(
+        context: context,
+        initialTime: _remindAt != null
+            ? TimeOfDay(hour: _remindAt!.hour, minute: _remindAt!.minute)
+            : TimeOfDay(hour: (now.hour + 1) % 24, minute: 0),
+        helpText: 'Erinnerung – Uhrzeit',
+      );
+      if (t == null || !mounted) return;
+      setState(() => _remindAt = DateTime(2000, 1, 3, t.hour, t.minute));
+      await _checkPermission();
+      return;
+    }
     var base = _remindAt;
     if (base == null) {
       base = _type == EntryType.goal ? parseDayKey(_day) : now;
@@ -120,6 +164,10 @@ class _EditSheetState extends State<EditSheet> {
     setState(() {
       _remindAt = DateTime(date.year, date.month, date.day, t.hour, t.minute);
     });
+    await _checkPermission();
+  }
+
+  Future<void> _checkPermission() async {
     final ok = await Notifications.instance.ensurePermission();
     if (!ok && Notifications.instance.supported && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -140,6 +188,61 @@ class _EditSheetState extends State<EditSheet> {
     if (_tagInput.text.trim().isNotEmpty) _addTag(_tagInput.text);
     final store = StoreScope.read(context);
     final e = widget.entry;
+    final tmpl = _template;
+
+    if (_recurring) {
+      if (tmpl != null) {
+        tmpl
+          ..title = title
+          ..note = _note.text.trim()
+          ..tags = [..._tags]
+          ..recurDays = [..._recur]
+          ..remindAt = _remindAt;
+        store.updateTemplate(tmpl);
+        if (e != null && e != tmpl) {
+          e
+            ..title = title
+            ..note = _note.text.trim()
+            ..tags = [..._tags];
+          store.update(e);
+        }
+      } else {
+        final t = store.addTemplate(
+          title: title,
+          note: _note.text,
+          tags: _tags,
+          recurDays: _recur,
+          remindAt: _remindAt,
+          startDay: parseDayKey(_day),
+        );
+        if (e != null) {
+          // Bestehender Eintrag wird zum ersten Ziel der Wiederholung.
+          e
+            ..type = EntryType.goal
+            ..title = title
+            ..note = _note.text.trim()
+            ..tags = [..._tags]
+            ..day = _day
+            ..remindAt = null
+            ..repeat = Repeat.none;
+          if (_recur.contains(parseDayKey(_day).weekday)) e.templateId = t.id;
+          store.update(e);
+        }
+      }
+      Navigator.of(context).pop();
+      return;
+    }
+
+    if (tmpl != null) {
+      // Wiederholung wurde ausgeschaltet.
+      store.deleteTemplate(tmpl);
+      if (e == null || e == tmpl) {
+        Navigator.of(context).pop();
+        return;
+      }
+      e.templateId = null;
+    }
+
     if (e == null) {
       store.add(
         type: _type,
@@ -164,11 +267,52 @@ class _EditSheetState extends State<EditSheet> {
     Navigator.of(context).pop();
   }
 
-  void _delete() {
+  Future<void> _delete() async {
     final e = widget.entry;
     if (e == null) return;
     final store = StoreScope.read(context);
     final messenger = ScaffoldMessenger.of(context);
+    final tmpl = _template;
+    if (tmpl != null) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Wiederkehrendes Ziel'),
+          content: Text(e == tmpl
+              ? 'Wiederholung beenden? Offene Ziele ab morgen werden entfernt.'
+              : 'Nur dieses Mal entfernen oder die Wiederholung ganz beenden?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Abbrechen')),
+            if (e != tmpl)
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, 'once'),
+                  child: const Text('Nur dieses Mal')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, 'all'),
+                child: const Text('Wiederholung beenden')),
+          ],
+        ),
+      );
+      if (choice == null || !mounted) return;
+      if (choice == 'once') {
+        store.skipInstance(e);
+        Navigator.of(context).pop();
+        messenger.showSnackBar(SnackBar(
+          content: Text('„${e.title}“ für diesen Tag entfernt'),
+          action: SnackBarAction(
+              label: 'Rückgängig', onPressed: () => store.unskipInstance(e)),
+        ));
+      } else {
+        store.deleteTemplate(tmpl);
+        if (e != tmpl && !e.done) store.delete(e);
+        Navigator.of(context).pop();
+        messenger.showSnackBar(
+            SnackBar(content: Text('Wiederholung von „${e.title}“ beendet')));
+      }
+      return;
+    }
     store.delete(e);
     Navigator.of(context).pop();
     messenger.showSnackBar(SnackBar(
@@ -197,7 +341,9 @@ class _EditSheetState extends State<EditSheet> {
             Row(
               children: [
                 Text(
-                  _isNew ? 'Neuer Eintrag' : 'Bearbeiten',
+                  _template != null
+                      ? 'Wiederkehrendes Ziel'
+                      : (_isNew ? 'Neuer Eintrag' : 'Bearbeiten'),
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const Spacer(),
@@ -210,6 +356,7 @@ class _EditSheetState extends State<EditSheet> {
               ],
             ),
             const SizedBox(height: 12),
+            if (_template == null)
             SegmentedButton<EntryType>(
               showSelectedIcon: false,
               segments: [
@@ -276,8 +423,56 @@ class _EditSheetState extends State<EditSheet> {
               onSubmitted: _addTag,
             ),
             const SizedBox(height: 16),
-            // ---------- Tag (nur Ziele) ----------
-            if (_type == EntryType.goal)
+            // ---------- Wiederholen (nur Ziele) ----------
+            if (_type == EntryType.goal) ...[
+              Row(
+                children: [
+                  Icon(Icons.repeat, size: 18, color: s.primary),
+                  const SizedBox(width: 8),
+                  Text('Wiederholen',
+                      style: Theme.of(context).textTheme.labelLarge),
+                  const Spacer(),
+                  Text(_recur.isEmpty ? 'Nie' : fmtWeekdays(_recur),
+                      style: TextStyle(color: s.onSurfaceVariant)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (var wd = 1; wd <= 7; wd++)
+                    _DayChip(
+                      label: weekdayShort[wd - 1],
+                      selected: _recur.contains(wd),
+                      onTap: () => _toggleDay(wd),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                children: [
+                  for (final preset in const [
+                    ('Täglich', [1, 2, 3, 4, 5, 6, 7]),
+                    ('Mo–Fr', [1, 2, 3, 4, 5]),
+                    ('Wochenende', [6, 7]),
+                  ])
+                    ActionChip(
+                      label: Text(preset.$1),
+                      onPressed: () =>
+                          setState(() => _recur = [...preset.$2]),
+                    ),
+                  if (_recur.isNotEmpty)
+                    ActionChip(
+                      label: const Text('Nie'),
+                      onPressed: () => setState(() => _recur = []),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+            // ---------- Tag (nur einmalige Ziele) ----------
+            if (_type == EntryType.goal && !_recurring)
               _OptionTile(
                 icon: Icons.calendar_today_outlined,
                 title: 'Für',
@@ -291,7 +486,9 @@ class _EditSheetState extends State<EditSheet> {
               title: 'Erinnerung',
               value: _remindAt == null
                   ? 'Keine'
-                  : fmtReminder(_remindAt!, _repeat),
+                  : _recurring
+                      ? '${fmtWeekdays(_recur)} um ${fmtTime(_remindAt!)}'
+                      : fmtReminder(_remindAt!, _repeat),
               onTap: _pickReminder,
               trailing: _remindAt == null
                   ? null
@@ -301,7 +498,7 @@ class _EditSheetState extends State<EditSheet> {
                       onPressed: () => setState(() => _remindAt = null),
                     ),
             ),
-            if (_remindAt != null) ...[
+            if (_remindAt != null && !_recurring) ...[
               const SizedBox(height: 8),
               SegmentedButton<Repeat>(
                 showSelectedIcon: false,
@@ -396,6 +593,41 @@ class _OptionTile extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DayChip extends StatelessWidget {
+  const _DayChip(
+      {required this.label, required this.selected, required this.onTap});
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = Theme.of(context).colorScheme;
+    return InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: selected ? s.primary : s.surfaceContainerHigh,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: selected ? s.onPrimary : s.onSurfaceVariant,
           ),
         ),
       ),

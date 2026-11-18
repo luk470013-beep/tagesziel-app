@@ -88,11 +88,49 @@ class Notifications {
     return t;
   }
 
+  int _weekdayId(Entry t, int wd) => 500000 + t.nid * 8 + wd;
+
+  /// Wiederkehrendes Ziel: eine wöchentliche Erinnerung pro Wochentag.
+  Future<void> _syncTemplate(Entry t) async {
+    for (var wd = 1; wd <= 7; wd++) {
+      await _plugin.cancel(id: _weekdayId(t, wd));
+    }
+    final at = t.remindAt;
+    if (at == null) return;
+    final now = tz.TZDateTime.now(tz.local);
+    for (final wd in t.recurDays) {
+      var when = tz.TZDateTime(
+          tz.local, now.year, now.month, now.day, at.hour, at.minute);
+      while (when.weekday != wd || !when.isAfter(now)) {
+        when = tz.TZDateTime(tz.local, when.year, when.month, when.day + 1,
+            at.hour, at.minute);
+      }
+      await _plugin.zonedSchedule(
+        id: _weekdayId(t, wd),
+        title: t.title,
+        body: t.note.isNotEmpty ? t.note : 'Wiederkehrendes Ziel',
+        scheduledDate: when,
+        notificationDetails: _details(morning: false),
+        androidScheduleMode: await _mode(),
+        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        payload: t.id,
+      );
+    }
+  }
+
   /// Plant (oder entfernt) die Erinnerung zu einem Eintrag.
   Future<void> syncEntry(Entry e) async {
     if (!supported) return;
     await init();
     if (!_ready) return;
+    if (e.recurDays.isNotEmpty && e.day == null) {
+      try {
+        await _syncTemplate(e);
+      } catch (err) {
+        debugPrint('Wiederkehrende Erinnerung fehlgeschlagen: $err');
+      }
+      return;
+    }
     try {
       await _plugin.cancel(id: e.nid);
       final at = e.remindAt;
@@ -128,6 +166,9 @@ class Notifications {
     if (!_ready) return;
     try {
       await _plugin.cancel(id: e.nid);
+      for (var wd = 1; wd <= 7; wd++) {
+        await _plugin.cancel(id: _weekdayId(e, wd));
+      }
     } catch (_) {}
   }
 

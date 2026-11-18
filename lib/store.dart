@@ -103,6 +103,7 @@ class Store extends ChangeNotifier {
   // ---------- Abfragen ----------
 
   List<Entry> goalsFor(String day) {
+    _ensureRecurring(day);
     final list =
         _entries.where((e) => e.type == EntryType.goal && e.day == day).toList();
     list.sort((a, b) {
@@ -149,6 +150,7 @@ class Store extends ChangeNotifier {
     if (q.isEmpty) return [];
     final terms = q.split(RegExp(r'\s+'));
     final list = _entries.where((e) {
+      if (e.isTemplate) return false;
       final hay =
           '${e.title}\n${e.note}\n${e.tags.join(' ')}'.toLowerCase();
       return terms.every(hay.contains);
@@ -161,6 +163,138 @@ class Store extends ChangeNotifier {
   (int, int) progress(String day) {
     final g = goalsFor(day);
     return (g.where((e) => e.done).length, g.length);
+  }
+
+  // ---------- Wiederkehrende Ziele ----------
+
+  List<Entry> templates() {
+    final list = _entries.where((e) => e.isTemplate).toList()
+      ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    return list;
+  }
+
+  Entry? templateOf(Entry e) {
+    final id = e.templateId;
+    if (id == null) return null;
+    for (final t in _entries) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  /// Legt für [day] die Ziele aus passenden Vorlagen an (falls noch nicht da).
+  void _ensureRecurring(String day) {
+    final wd = parseDayKey(day).weekday;
+    final made = <Entry>[];
+    for (final t in _entries) {
+      if (!t.isTemplate || !t.recurDays.contains(wd)) continue;
+      if (day.compareTo(dayKey(t.createdAt)) < 0) continue;
+      if (t.skip.contains(day)) continue;
+      if (_entries.any((e) => e.templateId == t.id && e.day == day)) continue;
+      made.add(Entry(
+        id: _newId(),
+        nid: _nextNid++,
+        type: EntryType.goal,
+        title: t.title,
+        note: t.note,
+        tags: [...t.tags],
+        createdAt: DateTime.now(),
+        day: day,
+        templateId: t.id,
+      ));
+    }
+    if (made.isNotEmpty) {
+      _entries.addAll(made);
+      _save();
+    }
+  }
+
+  Entry addTemplate({
+    required String title,
+    String note = '',
+    List<String>? tags,
+    required List<int> recurDays,
+    DateTime? remindAt,
+    DateTime? startDay,
+  }) {
+    final now = DateTime.now();
+    final start = startDay != null && startDay.isBefore(now) ? startDay : now;
+    final t = Entry(
+      id: _newId(),
+      nid: _nextNid++,
+      type: EntryType.goal,
+      title: title.trim(),
+      note: note.trim(),
+      tags: tags,
+      createdAt: DateTime(start.year, start.month, start.day),
+      recurDays: [...recurDays]..sort(),
+      remindAt: remindAt,
+    );
+    _entries.add(t);
+    _save();
+    _notif.syncEntry(t);
+    notifyListeners();
+    return t;
+  }
+
+  /// Übernimmt Änderungen der Vorlage in alle offenen Ziele ab heute.
+  void updateTemplate(Entry t) {
+    t.updatedAt = DateTime.now();
+    final today = dayKey(DateTime.now());
+    _entries.removeWhere((e) =>
+        e.templateId == t.id &&
+        !e.done &&
+        e.day != null &&
+        e.day!.compareTo(today) > 0 &&
+        !t.recurDays.contains(parseDayKey(e.day!).weekday));
+    for (final e in _entries) {
+      if (e.templateId == t.id &&
+          !e.done &&
+          e.day != null &&
+          e.day!.compareTo(today) >= 0) {
+        e
+          ..title = t.title
+          ..note = t.note
+          ..tags = [...t.tags];
+      }
+    }
+    _save();
+    _notif.syncEntry(t);
+    notifyListeners();
+  }
+
+  /// Beendet die Wiederholung. Offene künftige Ziele verschwinden,
+  /// erledigte und vergangene bleiben als normale Ziele erhalten.
+  void deleteTemplate(Entry t) {
+    final today = dayKey(DateTime.now());
+    _entries.removeWhere((e) =>
+        e.templateId == t.id &&
+        !e.done &&
+        e.day != null &&
+        e.day!.compareTo(today) > 0);
+    for (final e in _entries) {
+      if (e.templateId == t.id) e.templateId = null;
+    }
+    _entries.removeWhere((e) => e.id == t.id);
+    _save();
+    _notif.cancelEntry(t);
+    notifyListeners();
+  }
+
+  /// Entfernt ein wiederkehrendes Ziel nur für diesen einen Tag.
+  void skipInstance(Entry e) {
+    final t = templateOf(e);
+    if (t != null && e.day != null && !t.skip.contains(e.day)) {
+      t.skip.add(e.day!);
+    }
+    delete(e);
+  }
+
+  /// Macht [skipInstance] rückgängig.
+  void unskipInstance(Entry e) {
+    final t = templateOf(e);
+    if (t != null) t.skip.remove(e.day);
+    restore(e);
   }
 
   // ---------- Änderungen ----------
@@ -197,7 +331,7 @@ class Store extends ChangeNotifier {
   void update(Entry e) {
     e.updatedAt = DateTime.now();
     if (e.type == EntryType.goal) {
-      e.day ??= dayKey(DateTime.now());
+      if (e.recurDays.isEmpty) e.day ??= dayKey(DateTime.now());
     } else {
       e.day = null;
       e.done = false;
@@ -239,7 +373,25 @@ class Store extends ChangeNotifier {
 
   /// Verschiebt ein Tagesziel auf einen anderen Tag.
   void moveGoal(Entry e, String day) {
+    _detachFromTemplate(e);
     e.day = day;
+    update(e);
+  }
+
+  /// Löst ein wiederkehrendes Ziel von seiner Vorlage (z. B. beim
+  /// Verschieben), damit es an seinem Tag nicht neu angelegt wird.
+  void _detachFromTemplate(Entry e) {
+    final t = templateOf(e);
+    if (t != null && e.day != null && !t.skip.contains(e.day)) {
+      t.skip.add(e.day!);
+    }
+    e.templateId = null;
+  }
+
+  /// Wandelt ein Ziel in eine Idee um.
+  void goalToIdea(Entry e) {
+    _detachFromTemplate(e);
+    e.type = EntryType.idea;
     update(e);
   }
 
@@ -250,6 +402,7 @@ class Store extends ChangeNotifier {
     for (final e in _entries) {
       if (e.type == EntryType.goal &&
           !e.done &&
+          e.templateId == null &&
           e.day != null &&
           e.day!.compareTo(today) < 0) {
         e.day = today;

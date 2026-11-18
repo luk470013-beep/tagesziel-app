@@ -226,8 +226,7 @@ class _GoalTile extends StatelessWidget {
       case 'tomorrow':
         store.moveGoal(goal, dayKey(tomorrow));
       case 'idea':
-        goal.type = EntryType.idea;
-        store.update(goal);
+        store.goalToIdea(goal);
     }
   }
 
@@ -236,7 +235,15 @@ class _GoalTile extends StatelessWidget {
     final s = Theme.of(context).colorScheme;
     final store = StoreScope.read(context);
     final g = goal;
+    final tmpl = StoreScope.of(context).templateOf(g);
     final pills = <Widget>[
+      if (tmpl != null)
+        Pill(
+            label: tmpl.remindAt != null
+                ? '${fmtWeekdays(tmpl.recurDays)} · ${fmtTime(tmpl.remindAt!)}'
+                : fmtWeekdays(tmpl.recurDays),
+            icon: Icons.repeat,
+            color: s.secondary),
       if (g.remindAt != null)
         Pill(
             label: fmtReminder(g.remindAt!, g.repeat),

@@ -44,7 +44,12 @@ class Entry {
     this.pinned = false,
     this.remindAt,
     this.repeat = Repeat.none,
+    List<int>? recurDays,
+    this.templateId,
+    List<String>? skip,
   })  : tags = tags ?? <String>[],
+        recurDays = recurDays ?? <int>[],
+        skip = skip ?? <String>[],
         updatedAt = updatedAt ?? createdAt;
 
   /// Eindeutige ID (String).
@@ -73,7 +78,21 @@ class Entry {
   DateTime? remindAt;
   Repeat repeat;
 
+  /// Wiederkehrende Ziele: Wochentage (1 = Montag … 7 = Sonntag).
+  /// Ist die Liste nicht leer und [day] null, ist der Eintrag eine *Vorlage*,
+  /// aus der für jeden passenden Tag automatisch ein Ziel entsteht.
+  List<int> recurDays;
+
+  /// Bei automatisch erzeugten Zielen: ID der Vorlage.
+  String? templateId;
+
+  /// Nur bei Vorlagen: Tage, an denen das Ziel bewusst entfernt wurde.
+  List<String> skip;
+
   bool get hasReminder => remindAt != null;
+
+  bool get isTemplate =>
+      type == EntryType.goal && day == null && recurDays.isNotEmpty;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -91,6 +110,9 @@ class Entry {
         'pinned': pinned,
         'remindAt': remindAt?.toIso8601String(),
         'repeat': repeat.name,
+        if (recurDays.isNotEmpty) 'recurDays': recurDays,
+        if (templateId != null) 'templateId': templateId,
+        if (skip.isNotEmpty) 'skip': skip,
       };
 
   factory Entry.fromJson(Map<String, dynamic> j) {
@@ -118,6 +140,11 @@ class Entry {
         (r) => r.name == j['repeat'],
         orElse: () => Repeat.none,
       ),
+      recurDays: ((j['recurDays'] as List?) ?? const [])
+          .map((e) => (e as num).toInt())
+          .toList(),
+      templateId: j['templateId'] as String?,
+      skip: ((j['skip'] as List?) ?? const []).map((e) => e.toString()).toList(),
     );
   }
 }
@@ -280,3 +307,15 @@ String greeting(DateTime now) {
 /// Tag im Jahr (1–366), z. B. für den Spruch des Tages.
 int dayOfYear(DateTime d) =>
     DateTime(d.year, d.month, d.day).difference(DateTime(d.year)).inDays + 1;
+
+const weekdayShort = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+/// z. B. "Täglich", "Mo–Fr", "Wochenende", "Mo, Do"
+String fmtWeekdays(List<int> days) {
+  final d = days.toSet().toList()..sort();
+  if (d.length == 7) return 'Täglich';
+  if (d.length == 5 && d.first == 1 && d.last == 5) return 'Mo–Fr';
+  if (d.length == 2 && d.first == 6 && d.last == 7) return 'Wochenende';
+  if (d.length == 1) return 'Jeden ${_weekdays[d.first - 1]}';
+  return d.map((x) => weekdayShort[x - 1]).join(', ');
+}
