@@ -124,7 +124,7 @@ class _ScenePainter extends CustomPainter {
     final rnd = Random(variant * 7919 + 13);
     final w = size.width;
     final h = size.height;
-    final vp = Offset(w * 0.5, h * 0.5); // Fluchtpunkt
+    final vp = Offset(w * 0.5, h * 0.6); // Fluchtpunkt
     final scale = w * 0.42;
 
     Offset proj(double x, double y, double z) =>
@@ -155,9 +155,9 @@ class _ScenePainter extends CustomPainter {
     }
 
     // Sonne / Mond am Ende der Straße
-    final sunCenter = Offset(
-        vp.dx + (rnd.nextDouble() - 0.5) * w * 0.12,
-        vp.dy - h * (p.isNight ? 0.28 : 0.07));
+    final sunCenter = p.isNight
+        ? Offset(w * (0.68 + rnd.nextDouble() * 0.12), h * 0.2)
+        : Offset(vp.dx + (rnd.nextDouble() - 0.5) * w * 0.08, vp.dy - h * 0.045);
     final sunR = w * (p.isNight ? 0.09 : 0.11);
     canvas.drawCircle(
       sunCenter,
