@@ -363,7 +363,7 @@ class _EditSheetState extends State<EditSheet> {
                 for (final t in EntryType.values)
                   ButtonSegment(
                     value: t,
-                    label: Text(t.label),
+                    label: Text(t == EntryType.goal ? 'Ziel' : t.label),
                     icon: Icon(typeIcon(t), size: 18),
                   ),
               ],
